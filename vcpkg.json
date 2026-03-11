@@ -1,0 +1,12 @@
+{
+  "name": "template-cmake",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "cglm",
+    "fmt",
+    "spdlog",
+    "vulkan-memory-allocator",
+    "assimp",
+    "stb"
+  ]
+}
