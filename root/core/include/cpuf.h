@@ -14,6 +14,7 @@
 #include <array>
 #include <cglm/types.h>
 #include <functional>
+#include <pthread.h>
 #include <vector>
 #include "device.h"
 #include "texture.h"
@@ -27,6 +28,7 @@ namespace Nova::GE::Render {
         struct CPUF {
             u32      secondaryCount = 8;
             Device*  device         = nullptr;
+            u16 numPools = pthread_getconcurrency();
 
             class Builder;
         };
@@ -34,11 +36,19 @@ namespace Nova::GE::Render {
         class CPUF::Builder : Nova::Core::Base::Builder<CPUF> {
             public:
                 Builder() { get().secondaryCount = 8; }
-                Builder& setSecondaryCount(u32 count)  { get().secondaryCount = count; return *this; }
-                Builder& setDevice(Device& device)     { get().device = &device;       return *this; }
+                Builder& setSecondaryCount(u32 count)   { get().secondaryCount = count; return *this; }
+                Builder& setDevice(Device& device)      { get().device = &device;       return *this; }
+                Builder& setNumPools(u16 num)           { get().numPools = num;         return *this; }
                 CPUF build() { return get(); }
             };
     }
+
+
+    struct ThreadSlot {
+        vk::CommandPool pool;
+        std::vector<ref<CommandBuffer>> secondaries;
+        std::vector<bool> inUse;
+    };
 
     // -------------------------------------------------------------------------
     // Cmd — thin vk::CommandBuffer wrapper, primary or secondary
@@ -208,11 +218,23 @@ namespace Nova::GE::Render {
 
         void     setClearColor(Nova::Core::Vec3 color) { m_clearColor = color; }
 
+        Cmd acquireSecondary(u32 poolIndex, u32 slotIndex, const vk::CommandBufferInheritanceInfo& inheritance);
+        void releaseSecondary(Cmd& cmd);
+        
+
+        CBSlot* beginPrimary(RenderTarget& target);
+        void executeSecondaries(CBSlot& primary, const std::vector<vk::CommandBuffer>& ready);
+        void endPrimary(CBSlot& primary, std::function<void(vk::CommandBuffer)> submit);
+
+        u8 poolCount() const { return static_cast<u32>(m_pools.size()); }
+
     private:
-        Nova::Core::Vec3                 m_clearColor = { 0.0f, 0.0f, 0.0f };
-        Device*                          m_device = nullptr;
-        std::vector<CBSlot>              m_cmds;   // primaries
-        std::vector<ref<CommandBuffer>>  m_sCmds;  // secondaries
+        Nova::Core::Vec3                    m_clearColor = { 0.0f, 0.0f, 0.0f };
+        Device*                             m_device = nullptr;
+        std::vector<CBSlot>                 m_cmds;   // primaries
+        std::vector<ref<CommandBuffer>>     m_sCmds;  // secondaries
+        u8                                  m_workers;
+        std::vector<ThreadSlot>             m_pools;
     };
 
 } // namespace Nova::GE::Render

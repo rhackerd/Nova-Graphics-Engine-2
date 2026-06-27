@@ -1,5 +1,7 @@
 #include "cpuf.h"
 #include "commandBuffer.h"
+#include "core.h"
+#include "device.h"
 #include "swapchain.h"
 #include "vulkan/vulkan.hpp"
 #include <array>
@@ -8,6 +10,30 @@ namespace Nova::GE::Render {
 
     void CPUF::init(CreateInfo::CPUF& createInfo) {
         m_device = createInfo.device;
+        this->m_workers = createInfo.numPools;
+
+        auto family = m_device->getIndices().graphicsFamily.value();
+        m_pools.resize(m_workers);
+        for (auto& slot : m_pools) {
+            vk::CommandPoolCreateInfo ci{};
+            ci.setQueueFamilyIndex(family)
+            .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
+            slot.pool = m_device->getDevice().createCommandPool(ci);
+
+            constexpr u32 secondariesPerPool = 2;
+            slot.inUse.resize(secondariesPerPool, false);
+
+            vk::CommandBufferAllocateInfo cbci{};
+            cbci.setCommandBufferCount(secondariesPerPool)
+                .setCommandPool(slot.pool)
+                .setLevel(vk::CommandBufferLevel::eSecondary);
+            auto scbs = m_device->getDevice().allocateCommandBuffers(cbci);
+        
+            slot.secondaries.resize(secondariesPerPool);
+            for (u32 i = 0; i < secondariesPerPool; ++i) {
+                slot.secondaries[i]->set(scbs[i]);
+            }    
+        }
 
         // Preallocate primaries
         auto primaryInfo = Nova::GE::CreateInfo::CommandBuffer::Builder()
@@ -24,6 +50,21 @@ namespace Nova::GE::Render {
             .setSecondary(true)
             .build();
         m_sCmds = m_device->createCommandBuffers(secondaryInfo);
+    }
+
+    Cmd CPUF::acquireSecondary(u32 poolIndex, u32 slotIndex, const vk::CommandBufferInheritanceInfo& inheritance) {
+        auto& slot = m_pools[poolIndex];
+        auto cb = slot.secondaries[slotIndex]->getCommandBuffer();
+        cb.reset();
+        Cmd cmd;
+        cmd.init(cb, true);
+        cmd.bindDevice(m_device);
+        cmd.begin(&inheritance);
+        return cmd;
+    }
+
+    void CPUF::releaseSecondary(Cmd& cmd) {
+        cmd.end();
     }
 
 CBSlot* CPUF::batchSubmit(RenderTarget& target, std::vector<std::function<void(Cmd)>> fns, std::function<void(vk::CommandBuffer)> after) {

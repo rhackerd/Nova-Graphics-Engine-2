@@ -163,7 +163,5 @@ namespace Nova::GE {
 
         private:
             NOVA_LOG_DEF("Swapchain");
-    };
-
-    
+    };  
 };

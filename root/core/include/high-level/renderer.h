@@ -45,6 +45,8 @@ namespace Nova::Graphics {
 
             void step(Scene& scene);
 
+            auto* getSwapchain() {return m_swapchain;}
+
         public:
             [[nodiscard]]
             weakRef<GE::Camera> createCamera() {

@@ -62,16 +62,23 @@ int main() {
     scene.camera = camera;
     scene.objects.push_back(_object);
 
+    scene.objects.push_back(_object);
+
     bool running = true;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) {
                 running = false;
+            }else if(e.type == SDL_EVENT_WINDOW_RESIZED) {
+                printf("Window was resized\n");
+                auto swap = renderer.getSwapchain();
+                swap->handleRecreation();   
+                camera.lock()->setAspect(swap->getExtent().width / (float)swap->getExtent().height);
             }
         }
 
-        camera.lock()->move({0,0.001,0});
+        // camera.lock()->move({0,0.001,0});
 
         renderer.step(scene);
     };

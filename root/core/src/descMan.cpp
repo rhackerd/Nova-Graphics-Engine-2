@@ -1,9 +1,22 @@
 #include "descMan.h"
 #include "system.h"
 #include "vulkan/vulkan.hpp"
+#include <Nova/Core/macros.h>
 #include <vulkan/vulkan_core.h>
 
+#include <source_location>
+
+namespace Nova::Core {
+    [[noreturn]] inline void assertFail(const char* type, const char* msg, 
+                                         std::source_location loc = std::source_location::current()) {
+        // use your existing logger or just stderr
+        fprintf(stderr, "[%s] %s — %s:%d\n", type, msg, loc.file_name(), loc.line());
+        std::abort();
+    }
+}
+
 namespace Nova::GE {
+
     void DescriptorMan::init(VmaAllocator allocator, DevicePackage device, vk::PhysicalDeviceDescriptorBufferPropertiesEXT descProps, size_t size) {
         VkBufferCreateInfo bufCI{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -16,6 +29,8 @@ namespace Nova::GE {
                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
             .usage = VMA_MEMORY_USAGE_AUTO,
         };
+
+        m_capacity = size;
 
         VkBuffer buffer;
         vmaCreateBuffer(allocator, &bufCI, &allocCI, &buffer, &m_allocation, &m_info);
@@ -80,5 +95,41 @@ namespace Nova::GE {
 
         m_device.getDescriptorEXT(&getInfo, m_descProps.uniformBufferDescriptorSize,
             ptr(atOffset), m_dld);
+    }
+
+    SetHandle DescriptorMan::allocateSet(vk::DescriptorSetLayout setLayout, u32 setIndex) {
+        std::lock_guard lock(m_mutex);
+
+        auto& freeList = m_freeLists[setLayout];
+        usize base;
+        if (!freeList.empty()) {
+            base = freeList.back();
+            freeList.pop_back();
+        } else {
+            usize size = getSetSize(setLayout);
+            base = align(m_offset, m_descProps.descriptorBufferOffsetAlignment);
+            if (base + size > m_capacity) {
+                NOVA_PANIC(fmt::format("Descriptor buffer arena exhausted ({} / {} bytes)", base + size, m_capacity).c_str());
+            }
+            m_offset = base + size;
+        }
+
+        #ifndef NDEBUG
+        m_liveOffsets.insert(base);
+        #endif
+
+        return {base, setLayout, setIndex};
+    }
+
+    void DescriptorMan::freeSet(const SetHandle& set) {
+        std::lock_guard lock(m_mutex);
+
+        #ifndef NDEBUG
+        auto it = m_liveOffsets.find(set.baseOffset);
+        NOVA_ASSERT(it != m_liveOffsets.end(), "freeSet called on an offset that isn't currently allocated (double-free?)");
+        m_liveOffsets.erase(it);
+        #endif
+
+        m_freeLists[set.layout].push_back(set.baseOffset);
     }
 }

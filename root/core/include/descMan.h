@@ -5,6 +5,8 @@
 #include "uniformBuffer.h"
 #include "vulkan/vulkan.hpp"
 #include <cassert>
+#include <unordered_map>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_core.h>
 
@@ -19,12 +21,6 @@ namespace Nova::GE {
     struct DescriptorSetLayout {
         vk::DescriptorSetLayout layout = VK_NULL_HANDLE;
         u32 setIndex = 0;
-    };
-
-    struct DescripotorSetAllocation {
-        vk::DescriptorSetLayout layout;
-        u32 setIndex;
-        usize baseOffset;
     };
 
     inline usize align(usize offset, usize alignment) {
@@ -57,12 +53,7 @@ namespace Nova::GE {
 
         // ── Allocation ────────────────────────────────────────────────
         // Reserve space for a full descriptor set, returns base offset
-        SetHandle allocateSet(vk::DescriptorSetLayout setLayout, u32 binding) {
-            usize size = getSetSize(setLayout);
-            usize base = align(m_offset, m_descProps.descriptorBufferOffsetAlignment);
-            m_offset = base + size;
-            return {base, setLayout, binding};
-        }
+        SetHandle allocateSet(vk::DescriptorSetLayout setLayout, u32 setIndex);
 
         void writeUBO(const SetHandle& set, u32 binding, vk::Buffer ubo, usize size) {
             usize bindingOff = getBindingOffset(set.layout, binding);
@@ -78,6 +69,7 @@ namespace Nova::GE {
             usize bindingOff = getBindingOffset(set.layout, binding);
             _writeSampledImage(view, layout, set.baseOffset + bindingOff);
         }
+        void freeSet(const SetHandle& set);
 
     private:
         void _writeSampler(vk::Sampler sampler, usize atOffset);
@@ -96,5 +88,12 @@ namespace Nova::GE {
         vk::detail::DispatchLoaderDynamic m_dld;
 
         vk::PhysicalDeviceDescriptorBufferPropertiesEXT m_descProps{};
+
+        std::unordered_map<VkDescriptorSetLayout, std::vector<usize>> m_freeLists;
+        usize m_capacity = 0;
+        std::mutex m_mutex;
+        #ifndef NDEBUG
+        std::unordered_map<usize> m_liveOffsets;
+        #endif
     };
 }

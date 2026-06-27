@@ -1,5 +1,6 @@
 #include "camera.h"
 #include <cglm/quat.h>
+#include <numbers>
 
 namespace Nova::GE {
     void Camera::init(VmaAllocator allocator, DescriptorMan& descMan) {
@@ -91,7 +92,7 @@ namespace Nova::GE {
 
         // Projection
         if (m_projType == ProjType::Perspective) {
-            float fovRad = m_fovDeg * (3.14159265f / 180.0f);
+            float fovRad = m_fovDeg * (std::numbers::pi / 180.0f);
             m_data.proj = Nova::Core::Mat4::perspective(fovRad, m_aspect, m_nearP, m_farP);
 
             m_data.proj[1][1] *= -1.0f; // fli p y for Vulkan
