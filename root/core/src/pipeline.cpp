@@ -32,8 +32,6 @@ namespace Nova::GE {
         renderingCI.setColorAttachmentCount(1);
         vk::Format format = ci.format;
         vk::Format dFormat = ci.depthFormat;
-        printf("Pipeline format: %s\n", vk::to_string(ci.format).c_str());
-        fmt::print("Pipeline depth format: {}\n", vk::to_string(ci.depthFormat).c_str());
         renderingCI.setColorAttachmentFormats(format);
         renderingCI.setDepthAttachmentFormat(dFormat);
 
@@ -60,7 +58,6 @@ namespace Nova::GE {
         if (result.value == VK_NULL_HANDLE) {
             throw std::runtime_error("Failed to create graphics pipeline");
         }
-        printf("Created graphics pipeline\n");
         this->m_pipeline = result.value;
         this->device = device;
     }

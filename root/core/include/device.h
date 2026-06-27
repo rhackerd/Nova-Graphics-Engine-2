@@ -2,20 +2,19 @@
 
 
 #include "Image.h"
-#include "camera.h"
 #include "commandBuffer.h"
 #include "core.h"
 #include "descMan.h"
 #include "descMan.h"
 #include "pipeline.h"
 #include "system.h"
-#include "texture.h"
 #include "uniformBuffer.h"
 #include "vulkan/vulkan.hpp"
 #include <Nova/Desktop/core.h>
 #include <any>
 #include <memory>
 #include <optional>
+#include <source_location>
 #include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
@@ -26,6 +25,16 @@
 #include <Nova/Core/core.h>
 #include <vk_mem_alloc.h>
 #include "shader.h"
+#include <Nova/Core/macros.h>
+
+namespace Nova::Core {
+    [[noreturn]] inline void assertFail(const char* type, const char* msg, 
+                                         std::source_location loc = std::source_location::current()) {
+        // use your existing logger or just stderr
+        fprintf(stderr, "[%s] %s — %s:%d\n", type, msg, loc.file_name(), loc.line());
+        std::abort();
+    }
+}
 
 namespace Nova::GE {
     struct DeviceCaps {
@@ -151,6 +160,27 @@ namespace Nova::GE {
 
     extern uint16_t GPUIndex;
 
+    static vk::DeviceSize getFormatSize(vk::Format format) {
+        switch (format) {
+            case vk::Format::eR8G8B8A8Srgb:
+            case vk::Format::eR8G8B8A8Unorm:  return 4;
+            case vk::Format::eR16G16B16A16Sfloat: return 8;
+            case vk::Format::eR32G32B32A32Sfloat: return 16;
+            case vk::Format::eR8Unorm:         return 1;
+            case vk::Format::eR16Unorm:        return 2;
+            // add as needed
+            default:
+                NOVA_PANIC("Unknown format size"); // your assert system
+                return 0;
+        }
+    }
+
+    struct UploadHandle {
+        vk::CommandBuffer cmd;
+        vk::Fence fence;
+        Buffer buffer;
+    };
+
     /**
      * @class GfxEngine
      * @brief Main class for NGE Graphics Engine
@@ -202,9 +232,8 @@ namespace Nova::GE {
                 NOVA_INFO(*log, "Made a uniform buffer");
                 return buffer;
             }
-            [[nodiscard]]
-            weakRef<Texture> createTexture(const std::string& path);
 
+            void uploadToImage(ref<Image>, void* pixels);
             // void signTexture(weakRef<Texture> texture, vk::DescriptorSetLayout setLayout, Camera& camera) {
             //     auto tex = texture.lock();
             //     if (!tex) return;
@@ -275,7 +304,6 @@ namespace Nova::GE {
             std::vector<ref<Shader>> shaders;
             std::vector<ref<Pipeline>> pipelines;
             std::vector<ref<UniformBuffer>> ubos;
-            std::vector<ref<Texture>> textures;
 
             vk::CommandPool commandPool = VK_NULL_HANDLE;
 
@@ -291,6 +319,9 @@ namespace Nova::GE {
             usize imageDescSize = 0;
 
             float m_queuePriority = 1.0f;
+
+            ref<CommandBuffer> transferBuffer;
+            bool transferBufferReady = false;
     };
     namespace CI = CreateInfo;
     

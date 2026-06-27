@@ -2,7 +2,6 @@
 #include "core.h"
 #include "layout.h"
 #include "shader.h"
-#include "texture.h"
 #include "vulkan/vulkan.hpp"
 #include <Nova/Core/base.h>
 #include <array>
@@ -30,6 +29,7 @@ namespace Nova::GE {
             std::vector<vk::VertexInputAttributeDescription> vertexAttribs;
             vk::Format format;
             vk::Format depthFormat;
+            vk::SampleCountFlagBits samples;
             class Builder;
         };
 
@@ -117,6 +117,15 @@ namespace Nova::GE {
                     get().multisampling.alphaToOneEnable = false;
                     return *this;
                 }
+                Builder& setMSAA(vk::SampleCountFlagBits samples) {
+                    get().multisampling.sampleShadingEnable = false;
+                    get().multisampling.rasterizationSamples = samples;
+                    get().multisampling.minSampleShading = 1.0f;
+                    get().multisampling.pSampleMask = nullptr;
+                    get().multisampling.alphaToCoverageEnable = false;
+                    get().multisampling.alphaToOneEnable = false;
+                    return *this;
+                };
                 Builder& prepareDefaultColorBlending() {
                     this->prepareDefaultBlendOp();
                     get().colorBlending.attachmentCount = 1;

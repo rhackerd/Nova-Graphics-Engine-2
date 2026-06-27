@@ -1,5 +1,6 @@
 #pragma once
 
+#include "descMan.h"
 #include "types.h"
 #include "ubo.h"
 #include "vulkan/vulkan.hpp"
@@ -49,7 +50,7 @@ namespace Nova::GE {
             return *this;
         }
 
-        vk::DescriptorSetLayout bake(vk::Device device, vk::detail::DispatchLoaderDynamic& dld) {
+        SetHandle bake(vk::Device device, vk::detail::DispatchLoaderDynamic& dld, u32 binding = 0) {
             std::vector<vk::DescriptorSetLayoutBinding> bindings;
             for (auto& e : m_uboEntries)
                 bindings.push_back({e.binding, vk::DescriptorType::eUniformBuffer, 1, e.stages});
@@ -61,7 +62,11 @@ namespace Nova::GE {
             vk::DescriptorSetLayoutCreateInfo ci{};
             ci.setBindings(bindings)
             .setFlags(vk::DescriptorSetLayoutCreateFlagBits::eDescriptorBufferEXT);
-            return device.createDescriptorSetLayout(ci, nullptr, dld);
+            auto setLayout =  device.createDescriptorSetLayout(ci, nullptr, dld);
+            SetHandle handle;
+            handle.layout = setLayout;
+            handle.setIndex = binding;
+            return handle;
         }
 
     private:
@@ -78,9 +83,10 @@ namespace Nova::GE {
             return *this;
         }
 
-        BakedLayout bake(std::initializer_list<vk::DescriptorSetLayout> setLayouts) {
+        BakedLayout bake(std::initializer_list<SetHandle> setLayouts) {
             BakedLayout result;
-            result.setLayouts = setLayouts;
+            for (auto& l : setLayouts)
+                result.setLayouts.push_back(l.layout);
             for (auto& pc : m_pushConstants)
                 result.pushConstants.push_back({pc.stages, pc.offset, pc.size});
             return result;

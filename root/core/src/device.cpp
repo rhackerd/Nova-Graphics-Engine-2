@@ -9,6 +9,7 @@
 #include "vulkan/vulkan.hpp"
 #include <Nova/Core/core.h>
 #include <Nova/Core/macros.h>
+#include <cmath>
 #include <memory>
 #include <Nova/Desktop/core.h>
 #include <optional>
@@ -157,12 +158,6 @@ namespace Nova::GE {
         // DescMan
         descriptorManager.shutdown(mAllocator);
 
-        // Textures
-        for (auto& tex : textures) {
-            tex->shutdown();
-        }
-        textures.clear();
-
         // Command pool
         if (commandPool != VK_NULL_HANDLE) {
             mLogicalDevice.destroyCommandPool(commandPool);
@@ -256,27 +251,107 @@ namespace Nova::GE {
         return pipeline;
     }
 
-    weakRef<Texture> Device::createTexture(const std::string& path) {
-        NOVA_INFO(*log, "Making texture from {}", path);
-        auto texture = makeRef<Texture>();
+    // weakRef<Texture> Device::createTexture(const std::string& path) {
+    //     NOVA_INFO(*log, "Making texture from {}", path);
+    //     auto texture = makeRef<Texture>();
 
-        auto cbci = CreateInfo::CommandBuffer{};
-        cbci.CommandBufferCount = 1;
-        cbci.secondary = false;
+    //     auto cbci = CreateInfo::CommandBuffer{};
+    //     cbci.CommandBufferCount = 1;
+    //     cbci.secondary = false;
 
-        auto cb = this->createCommandBuffers(cbci).front();
+    //     auto cb = this->createCommandBuffers(cbci).front();
 
-        if (!texture->init(path, mAllocator, mLogicalDevice, cb->getCommandBuffer(), getGraphicsQueue())) {
-            cb->shutdown();
-            NOVA_INFO(*log, "Failed to make texture from {}", path);
-            return {};
-        }
-        mLogicalDevice.waitIdle();
-        cb->shutdown();
+    //     if (!texture->init(path, mAllocator, mLogicalDevice, cb->getCommandBuffer(), getGraphicsQueue())) {
+    //         cb->shutdown();
+    //         NOVA_INFO(*log, "Failed to make texture from {}", path);
+    //         return {};
+    //     }
+    //     mLogicalDevice.waitIdle();
+    //     cb->shutdown();
         
-        textures.push_back(texture);
-        NOVA_INFO(*log, "Made a texture from {}", path);
-        return texture;
-    }
+    //     textures.push_back(texture);
+    //     NOVA_INFO(*log, "Made a texture from {}", path);
+    //     return texture;
+    // }
+
+    void Device::uploadToImage(ref<Image> image, void* pixels) {
+        vk::DeviceSize size = image->getExtent().x() * image->getExtent().y() * getFormatSize(image->getFormat());
+
+        auto stagingCI = CreateInfo::Buffer::Builder()
+            .setSize(size)
+            .asStaging()
+            .setAllocator(mAllocator)
+            .build();
+
+        Buffer staging;
+        staging.init(stagingCI);
+        staging.upload(pixels, size);
+
+        auto cbci = CreateInfo::CommandBuffer::Builder()
+            .setCommandBufferCount(1)
+            .setPrimary()
+            .build();
+        auto _cb = this->createCommandBuffers(cbci).front();
+
+        vk::CommandBuffer cmd = _cb->getCommandBuffer();
+
+        cmd.begin(vk::CommandBufferBeginInfo{}
+            .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+        // Undefined → TransferDst
+        vk::ImageMemoryBarrier2 toTransfer{};
+        toTransfer
+            .setOldLayout(vk::ImageLayout::eUndefined)
+            .setNewLayout(vk::ImageLayout::eTransferDstOptimal)
+            .setImage(image->getImage())
+            .setSrcStageMask(vk::PipelineStageFlagBits2::eTopOfPipe)
+            .setSrcAccessMask(vk::AccessFlagBits2::eNone)
+            .setDstStageMask(vk::PipelineStageFlagBits2::eTransfer)
+            .setDstAccessMask(vk::AccessFlagBits2::eTransferWrite);
+        toTransfer.subresourceRange
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setLevelCount(1).setLayerCount(1);
+        cmd.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(toTransfer));
+
+        // Copy
+        vk::BufferImageCopy region{};
+        region.imageSubresource
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setMipLevel(0).setBaseArrayLayer(0).setLayerCount(1);
+        region
+            .setImageOffset({0,0,0})
+            .setImageExtent({static_cast<uint32_t>(image->getExtent().x()), static_cast<uint32_t>(image->getExtent().y()), 1});
+
+        cmd.copyBufferToImage(staging.getBuffer(), image->getImage(),
+            vk::ImageLayout::eTransferDstOptimal, region);
+
+        // TransferDst → ShaderReadOnly
+        vk::ImageMemoryBarrier2 toShader{};
+        toShader
+            .setOldLayout(vk::ImageLayout::eTransferDstOptimal)
+            .setNewLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
+            .setImage(image->getImage())
+            .setSrcStageMask(vk::PipelineStageFlagBits2::eTransfer)
+            .setSrcAccessMask(vk::AccessFlagBits2::eTransferWrite)
+            .setDstStageMask(vk::PipelineStageFlagBits2::eFragmentShader)
+            .setDstAccessMask(vk::AccessFlagBits2::eShaderRead);
+        toShader.subresourceRange
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setLevelCount(1).setLayerCount(1);
+        cmd.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(toShader));
+
+        cmd.end();
+
+        vk::FenceCreateInfo fenceInfo{};
+        auto fence = mLogicalDevice.createFence(fenceInfo);
+        
+        vk::SubmitInfo submitInfo{};
+        submitInfo.setCommandBuffers(cmd);
+        getGraphicsQueue().submit(submitInfo, fence);
+        mLogicalDevice.waitForFences(fence, true, UINT64_MAX);
+        mLogicalDevice.destroyFence(fence);
+        staging.shutdown();
+        fence = VK_NULL_HANDLE;
+    };
 
 };

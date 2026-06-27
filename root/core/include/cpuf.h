@@ -65,6 +65,7 @@ namespace Nova::GE::Render {
 
         void bindPipeline(const ref<Pipeline>& pipeline) {
             m_cb.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->get());
+            this->layout = pipeline->getLayout();
         }
 
         void draw(uint32_t vertexCount) {
@@ -118,13 +119,17 @@ namespace Nova::GE::Render {
             m_cb.bindDescriptorBuffersEXT(bindingInfo, device->getDld());
         }
 
-        void bindSet(u32 setIndex, const SetHandle& set, vk::PipelineLayout layout) {
+        void _bindSet(u32 setIndex, const SetHandle& set, vk::PipelineLayout layout) {
             u32 bufIdx = 0;
             vk::DeviceSize offset = set.baseOffset;
             m_cb.setDescriptorBufferOffsetsEXT(
                 vk::PipelineBindPoint::eGraphics, layout,
                 setIndex, 1, &bufIdx, &offset, device->getDld()
             );
+        }
+
+        void bindSet(const SetHandle& set) {
+            _bindSet(set.setIndex, set, this->layout);
         }
 
         void pushConstant(const Nova::Core::Mat4& mat, vk::PipelineLayout layout) {
@@ -139,6 +144,7 @@ namespace Nova::GE::Render {
         vk::CommandBuffer m_cb          = VK_NULL_HANDLE;
         Device* device = nullptr;
         bool              m_isSecondary = false;
+        vk::PipelineLayout layout;
     };
 
     struct RenderTarget {

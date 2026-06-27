@@ -148,7 +148,7 @@ CBSlot* CPUF::batchSubmit(RenderTarget& target, std::vector<std::function<void(C
 
         primary.endRendering();
 
-        after(primary.get());
+        if (after) after(primary.get());
 
         // barrier: color attachment → present
         vk::ImageMemoryBarrier2 barrierPresent{};
@@ -170,5 +170,10 @@ CBSlot* CPUF::batchSubmit(RenderTarget& target, std::vector<std::function<void(C
 
         return available;
     }
+
+    void CPUF::shutdown() {
+        m_cmds.clear();
+        m_sCmds.clear();
+    };
 
 };

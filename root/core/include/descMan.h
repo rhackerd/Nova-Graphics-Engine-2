@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core.h"
-#include "layout.h"
 #include "system.h"
 #include "uniformBuffer.h"
 #include "vulkan/vulkan.hpp"
@@ -14,6 +13,18 @@ namespace Nova::GE {
     struct SetHandle {
         usize baseOffset = 0;
         vk::DescriptorSetLayout layout = VK_NULL_HANDLE;
+        u32 setIndex = 0;
+    };
+
+    struct DescriptorSetLayout {
+        vk::DescriptorSetLayout layout = VK_NULL_HANDLE;
+        u32 setIndex = 0;
+    };
+
+    struct DescripotorSetAllocation {
+        vk::DescriptorSetLayout layout;
+        u32 setIndex;
+        usize baseOffset;
     };
 
     inline usize align(usize offset, usize alignment) {
@@ -46,11 +57,11 @@ namespace Nova::GE {
 
         // ── Allocation ────────────────────────────────────────────────
         // Reserve space for a full descriptor set, returns base offset
-        SetHandle allocateSet(vk::DescriptorSetLayout setLayout) {
+        SetHandle allocateSet(vk::DescriptorSetLayout setLayout, u32 binding) {
             usize size = getSetSize(setLayout);
             usize base = align(m_offset, m_descProps.descriptorBufferOffsetAlignment);
             m_offset = base + size;
-            return {base, setLayout};
+            return {base, setLayout, binding};
         }
 
         void writeUBO(const SetHandle& set, u32 binding, vk::Buffer ubo, usize size) {
