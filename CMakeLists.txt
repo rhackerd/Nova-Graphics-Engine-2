@@ -9,7 +9,7 @@ if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
         CACHE STRING "Vcpkg toolchain file")
 endif()
 
-project(template_cmake)
+project(Graphics)
 
 set(CMAKE_BUILD_TYPE Debug)
 
