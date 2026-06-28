@@ -6,7 +6,14 @@
 #include <Nova/Core/structs.hpp>
 #include <cglm/vec3.h>
 namespace Nova::GE {
-    struct alignas(16) CameraData {
+
+    #if defined(__AVX__)
+        #define NOVA_MAT4_ALIGN 32
+    #else
+        #define NOVA_MAT4_ALIGN 16
+    #endif
+
+    struct alignas(NOVA_MAT4_ALIGN) CameraData {
         Nova::Core::Mat4 view;
         Nova::Core::Mat4 proj;
     };

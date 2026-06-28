@@ -22,6 +22,7 @@ namespace Nova::GE {
         dynamicState.setDynamicStateCount(ci.dynamicStates.size())
         .setDynamicStates(ci.dynamicStates);
 
+
         ci.vertexLayout
         .setVertexBindingDescriptionCount(1)
         .setPVertexBindingDescriptions(&ci.binding)

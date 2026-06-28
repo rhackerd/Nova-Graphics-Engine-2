@@ -25,6 +25,7 @@ namespace Nova::GE {
         }
         if (info.mipLevels == 0) info.mipLevels = 1;
         if (info.arrayLayers == 0) info.arrayLayers = 1;
+        info.setSamples(createInfo.samples);
 
         // if (info.initialLayout == vk::ImageLayout::eUndefined) info.initialLayout = vk::ImageLayout::eGeneral;
 

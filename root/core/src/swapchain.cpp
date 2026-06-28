@@ -1,5 +1,6 @@
 #include "swapchain.h"
 #include "Image.h"
+#include "core.h"
 #include "vulkan/vulkan.hpp"
 #include "SDL3/SDL.h"
 #include <Nova/Core/macros.h>
@@ -9,10 +10,35 @@
 #include <vulkan/vulkan_to_string.hpp>
 
 namespace Nova::GE {
+
+    #include <vulkan/vulkan.hpp>
+#include <algorithm>
+
+    vk::SampleCountFlagBits clampToSupported(vk::SampleCountFlagBits requestedSamples, vk::SampleCountFlags supported) {
+        if (supported & requestedSamples) {
+            return requestedSamples;
+        }
+        const vk::SampleCountFlagBits sampleCounts[] = {
+            vk::SampleCountFlagBits::e64,
+            vk::SampleCountFlagBits::e32,
+            vk::SampleCountFlagBits::e16,
+            vk::SampleCountFlagBits::e8,
+            vk::SampleCountFlagBits::e4,
+            vk::SampleCountFlagBits::e2,
+            vk::SampleCountFlagBits::e1
+        };
+        for (auto count : sampleCounts) {
+            if ((supported & count) && (count <= requestedSamples)) {
+                return count;
+            }
+        }
+        return vk::SampleCountFlagBits::e1;
+    }
+
     bool Swapchain::init(CreateInfo::Swapchain& createInfo) {
         device = createInfo.device;
         window = createInfo.window;
-        m_createInfo = createInfo; // FIX: store for recreation
+        m_createInfo = createInfo;
 
         NOVA_SUPPRESS_INTERNAL_BEGIN
         vk::SurfaceCapabilities2KHR caps = device->getPhysicalDevice()
@@ -28,8 +54,14 @@ namespace Nova::GE {
         
         NOVA_SUPPRESS_INTERNAL_END
 
+        vk::SampleCountFlags Csupported = device->getPhysicalDevice().getProperties().limits.framebufferColorSampleCounts;
+        vk::SampleCountFlags Dsupported = device->getPhysicalDevice().getProperties().limits.framebufferDepthSampleCounts;
+        vk::SampleCountFlags combined = Csupported & Dsupported;
+
+        m_sampleCount = clampToSupported(createInfo.Samples, combined);
+
         vk::SurfaceFormat2KHR surfaceFormat = chooseFormat();
-        m_format = surfaceFormat.surfaceFormat.format; // FIX: store as member vk::Format
+        m_format = surfaceFormat.surfaceFormat.format;
         vk::PresentModeKHR pMode = choosePresentMode();
         extent = createInfo.extent;
 
@@ -57,6 +89,10 @@ namespace Nova::GE {
         setupColorBuffer();
         setupDepthBuffer();
 
+        if (m_sampleCount != vk::SampleCountFlagBits::e1) {
+            setupMSColorBuffer();
+        }
+
         vk::SemaphoreCreateInfo si{};
         imageAvailable = device->getDevice().createSemaphore(si, nullptr, device->getDld());
 
@@ -73,16 +109,20 @@ namespace Nova::GE {
             device->getDevice().destroyImageView(view, nullptr, device->getDld());
         }
 
+        for (auto& img : m_msColorImagePtrs) {
+            device->removeImage(img.lock());
+        }
+
         // Destroy semaphore
         if (imageAvailable != VK_NULL_HANDLE) device->getDevice().destroySemaphore(imageAvailable, nullptr, device->getDld());
 
         device->getDevice().destroySwapchainKHR(swapchain, nullptr, device->getDld());
         swapchain = VK_NULL_HANDLE;
-        m_depthImagesPtrs.clear(); // ADD THIS
-        m_depthImages.clear();     // ADD THIS
-        m_depthImagesViews.clear(); // ADD THIS
-        m_depthAllocations.clear(); // ADD THIS
-        images.clear();             // ADD THIS
+        m_depthImagesPtrs.clear();
+        m_depthImages.clear();
+        m_depthImagesViews.clear();
+        m_depthAllocations.clear();
+        images.clear();
     }
 
     void Swapchain::retrieveSwapchainImgs()
@@ -146,6 +186,7 @@ namespace Nova::GE {
                 .setExtent(extent)
                 .setType(CreateInfo::ImageType::e2D)
                 .setFormat(format)
+                .setSampling(m_sampleCount)
                 .build();
             imageCI.info
                 .setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment)
@@ -211,5 +252,30 @@ namespace Nova::GE {
         m_createInfo.extent = {static_cast<float>(w), static_cast<float>(h)}; // update extent
         init(m_createInfo);           // FIX: use stored createInfo
         extent = {static_cast<float>(w), static_cast<float>(h)};
+    }
+
+    void Swapchain::setupMSColorBuffer() {
+        m_msColorImagePtrs.clear();
+        m_msColorImageViews.resize(images.size());
+
+        NINFO("Making MSAA color buffer @ {} samples", vk::to_string(m_sampleCount));
+        for (size_t i = 0; i < images.size(); i++) {
+            Nova::GE::CreateInfo::Image imageCI = Nova::GE::CreateInfo::Image::Builder()
+                .setExtent(extent)
+                .setType(CreateInfo::ImageType::e2D)
+                .setFormat(m_format)
+                .setSampling(m_sampleCount)
+                .build();
+            imageCI.info
+                .setUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransientAttachment)
+                .setTiling(vk::ImageTiling::eOptimal)
+                .setFormat(m_format);
+
+            weakRef<Image> image = device->createImage(imageCI);
+            m_msColorImagePtrs.push_back(image);
+            ImageViewHandle view = image.lock()->createView(vk::ImageAspectFlagBits::eColor);
+            m_msColorImageViews[i] = image.lock()->resolve(view);
+        }
+        NINFO("Made {} MSAA color Images sucessfully", images.size());
     }
 };

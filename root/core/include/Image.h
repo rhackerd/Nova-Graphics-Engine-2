@@ -30,6 +30,7 @@ namespace Nova::GE {
             vk::ImageCreateInfo info;
             VmaAllocator * allocator;
             vk::Device device;
+            vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1;
 
             class Builder;
         };
@@ -70,6 +71,11 @@ namespace Nova::GE {
 
                 Builder& setInitialLayout(vk::ImageLayout layout) {
                     get().info.initialLayout = layout;
+                    return *this;
+                }
+
+                Builder& setSampling(vk::SampleCountFlagBits sampling) {
+                    get().samples = sampling;
                     return *this;
                 }
 

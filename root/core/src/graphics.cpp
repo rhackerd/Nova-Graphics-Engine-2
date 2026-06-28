@@ -1,6 +1,7 @@
 #include "high-level/graphics.h"
 #include "device.h"
 #include "system.h"
+#include "vulkan/vulkan.hpp"
 #include <vulkan/vulkan_core.h>
 
 namespace Nova::Graphics {
@@ -31,6 +32,7 @@ namespace Nova::Graphics {
             .assignWindow(window)
             .setDevice(m_device)
             .setExtent({800,600}) // TODO: In window add getSize and much more getters
+            .setSampling(vk::SampleCountFlagBits::e1)
             .build();
         if(!m_swapchain.init(scCI)) return false;
 

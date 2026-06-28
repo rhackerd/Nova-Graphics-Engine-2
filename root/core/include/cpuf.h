@@ -162,10 +162,14 @@ namespace Nova::GE::Render {
         vk::ImageView    view;
         vk::Format       format;   // needed for inheritance info
         Nova::Core::Vec2 extent;
+        vk::Image msImage;
 
         vk::Image depthImage;
         vk::ImageView depthView;
         vk::Format depthFormat;
+
+        vk::ImageView msView;
+        vk::SampleCountFlagBits sampleCount;
 
         Nova::GE::Swapchain* swapchain; // Needed only for update render Target 
     };
@@ -184,9 +188,12 @@ namespace Nova::GE::Render {
             .view      = swapchain.getCurrentImageView(),
             .format    = swapchain.getFormat(),
             .extent    = {(float)swapchain.getExtent().width, (float)swapchain.getExtent().height},
+            .msImage = swapchain.getCurrentMSColorImage(),
             .depthImage = swapchain.getCurrentDepthImage(),
             .depthView = swapchain.getCurrentDepthImageView(),
             .depthFormat = swapchain.getDepthFormat(),
+            .msView = swapchain.getCurrentMSColorImageView(),
+            .sampleCount = swapchain.getSampleCount(),
             .swapchain = &swapchain
         };
     }
@@ -197,6 +204,9 @@ namespace Nova::GE::Render {
         t.extent = {(float)t.swapchain->getExtent().width, (float)t.swapchain->getExtent().height};
         t.depthImage = t.swapchain->getCurrentDepthImage();
         t.depthView = t.swapchain->getCurrentDepthImageView();
+        t.msView = t.swapchain->getCurrentMSColorImageView();
+        t.msImage = t.swapchain->getCurrentMSColorImage();
+        t.sampleCount = t.swapchain->getSampleCount();
     }
 
     // -------------------------------------------------------------------------

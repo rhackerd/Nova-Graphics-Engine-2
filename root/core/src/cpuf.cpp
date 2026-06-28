@@ -5,6 +5,7 @@
 #include "swapchain.h"
 #include "vulkan/vulkan.hpp"
 #include <array>
+#include <vector>
 
 namespace Nova::GE::Render {
 
@@ -77,7 +78,7 @@ CBSlot* CPUF::batchSubmit(RenderTarget& target, std::vector<std::function<void(C
         inheritanceRenderingInfo
             .setColorAttachmentFormats(target.format)
             .setDepthAttachmentFormat(target.depthFormat)
-            .setRasterizationSamples(vk::SampleCountFlagBits::e1);
+            .setRasterizationSamples(target.sampleCount);
 
         vk::CommandBufferInheritanceInfo inheritanceInfo{};
         inheritanceInfo.setPNext(&inheritanceRenderingInfo);
@@ -115,27 +116,16 @@ CBSlot* CPUF::batchSubmit(RenderTarget& target, std::vector<std::function<void(C
         // ----------------------------------------------------------------
         // Record primary
         // ----------------------------------------------------------------
+
         available->cmd->getCommandBuffer().reset();
         Cmd primary;
         primary.init(available->cmd->getCommandBuffer(), false);
         primary.begin();
 
-        // barrier: undefined → color attachment
-        vk::ImageMemoryBarrier2 barrierAttach{};
-        barrierAttach
-            .setOldLayout(vk::ImageLayout::eUndefined)
-            .setNewLayout(vk::ImageLayout::eColorAttachmentOptimal)
-            .setImage(target.image)
-            .setSrcStageMask(vk::PipelineStageFlagBits2::eTopOfPipe)
-            .setSrcAccessMask(vk::AccessFlagBits2::eNone)
-            .setDstStageMask(vk::PipelineStageFlagBits2::eColorAttachmentOutput)
-            .setDstAccessMask(vk::AccessFlagBits2::eColorAttachmentWrite);
-        barrierAttach.subresourceRange
-            .setAspectMask(vk::ImageAspectFlagBits::eColor)
-            .setLevelCount(1)
-            .setLayerCount(1);
 
-        vk::ImageMemoryBarrier2 depthBarrier{};
+        std::vector<vk::ImageMemoryBarrier2> barriers;
+
+        vk::ImageMemoryBarrier2 depthBarrier;
         depthBarrier
             .setOldLayout(vk::ImageLayout::eUndefined)
             .setNewLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal)
@@ -148,19 +138,67 @@ CBSlot* CPUF::batchSubmit(RenderTarget& target, std::vector<std::function<void(C
             .setAspectMask(vk::ImageAspectFlagBits::eDepth)
             .setLevelCount(1)
             .setLayerCount(1);
+        barriers.push_back(depthBarrier);
 
-        std::array barriers = { barrierAttach, depthBarrier };
+        if (target.sampleCount > vk::SampleCountFlagBits::e1) {
+            vk::ImageMemoryBarrier2 msBarrier{};
+            msBarrier.setOldLayout(vk::ImageLayout::eUndefined)
+                    .setNewLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                    .setImage(target.msImage)
+                    .setSrcStageMask(vk::PipelineStageFlagBits2::eTopOfPipe)
+                    .setSrcAccessMask(vk::AccessFlagBits2::eNone)
+                    .setDstStageMask(vk::PipelineStageFlagBits2::eColorAttachmentOutput)
+                    .setDstAccessMask(vk::AccessFlagBits2::eColorAttachmentWrite);
+            msBarrier.subresourceRange.setAspectMask(vk::ImageAspectFlagBits::eColor).setLevelCount(1).setLayerCount(1);
+            barriers.push_back(msBarrier);
+
+            vk::ImageMemoryBarrier2 resolveBarrier{};
+            resolveBarrier.setOldLayout(vk::ImageLayout::eUndefined)
+                        .setNewLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                        .setImage(target.image)
+                        .setSrcStageMask(vk::PipelineStageFlagBits2::eTopOfPipe)
+                        .setSrcAccessMask(vk::AccessFlagBits2::eNone)
+                        .setDstStageMask(vk::PipelineStageFlagBits2::eColorAttachmentOutput)
+                        .setDstAccessMask(vk::AccessFlagBits2::eColorAttachmentWrite);
+            resolveBarrier.subresourceRange.setAspectMask(vk::ImageAspectFlagBits::eColor).setLevelCount(1).setLayerCount(1);
+            barriers.push_back(resolveBarrier);
+        } else {
+            vk::ImageMemoryBarrier2 barrierAttach{};
+            barrierAttach.setOldLayout(vk::ImageLayout::eUndefined)
+                        .setNewLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                        .setImage(target.image)
+                        .setSrcStageMask(vk::PipelineStageFlagBits2::eTopOfPipe)
+                        .setSrcAccessMask(vk::AccessFlagBits2::eNone)
+                        .setDstStageMask(vk::PipelineStageFlagBits2::eColorAttachmentOutput)
+                        .setDstAccessMask(vk::AccessFlagBits2::eColorAttachmentWrite);
+            barrierAttach.subresourceRange.setAspectMask(vk::ImageAspectFlagBits::eColor).setLevelCount(1).setLayerCount(1);
+            barriers.push_back(barrierAttach);
+        }
+
         primary.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(barriers));
 
         // beginRendering
         vk::RenderingAttachmentInfo colorAttachment{};
-        colorAttachment
-            .setImageView(target.view)
-            .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
-            .setLoadOp(vk::AttachmentLoadOp::eClear)
-            .setStoreOp(vk::AttachmentStoreOp::eStore)
-            .setClearValue(vk::ClearColorValue{std::array<float, 4>{
-                m_clearColor.x(), m_clearColor.y(), m_clearColor.z(), 1.0f}});
+        if (target.sampleCount > vk::SampleCountFlagBits::e1) {
+            colorAttachment
+                .setImageView(target.msView)
+                .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setLoadOp(vk::AttachmentLoadOp::eClear)
+                .setStoreOp(vk::AttachmentStoreOp::eDontCare)
+                .setResolveImageView(target.view)
+                .setResolveMode(vk::ResolveModeFlagBits::eAverage)
+                .setResolveImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setClearValue(vk::ClearColorValue{std::array<float, 4>{
+                    m_clearColor.x(), m_clearColor.y(), m_clearColor.z(), 1.0f}});
+        }else {
+            colorAttachment
+                .setImageView(target.view)
+                .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setLoadOp(vk::AttachmentLoadOp::eClear)
+                .setStoreOp(vk::AttachmentStoreOp::eStore)
+                .setClearValue(vk::ClearColorValue{std::array<float, 4>{
+                    m_clearColor.x(), m_clearColor.y(), m_clearColor.z(), 1.0f}});
+        }
 
         vk::RenderingAttachmentInfo depthAttachment{};
         depthAttachment

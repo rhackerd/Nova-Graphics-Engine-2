@@ -136,6 +136,10 @@ namespace Nova::GE {
                     get().colorBlending.blendConstants[3] = 0.0f;
                     return *this;
                 }
+                Builder& setSampleCount(vk::SampleCountFlagBits samples) {
+                    get().samples = samples;
+                    return *this;
+                }
                 Builder& prepareDefaultDepthStencil() {
                     get().depthStencil.depthTestEnable = true;
                     get().depthStencil.depthWriteEnable = true;

@@ -215,6 +215,7 @@ namespace Nova::GE {
             void shutdown();
 
         public:
+            // TODO: split device.h into factory.h and device.h
             // Object makers
             [[nodiscard]]
             ImagePtr createImage(CreateInfo::Image& createInfo);

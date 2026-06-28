@@ -1,6 +1,8 @@
 #pragma once
 
 
+#include "Image.h"
+#include "core.h"
 #include "system.h"
 #include "vulkan/vulkan.hpp"
 #include <Nova/Desktop/core.h>
@@ -27,6 +29,7 @@ namespace Nova::GE {
             Nova::GE::Device* device;
             Nova::Core::Vec2 extent;
             Nova::Desktop::Window* window;
+            vk::SampleCountFlagBits Samples = vk::SampleCountFlagBits::e4;
             
             class Builder {
                 private: Swapchain* info;
@@ -47,7 +50,11 @@ namespace Nova::GE {
                         info->window = &win;
                         return *this;
                     }
-                    
+
+                    Builder& setSampling(vk::SampleCountFlagBits samples) {
+                        info->Samples = samples;
+                        return *this;
+                    }
                     
                     Swapchain build() {
                         Swapchain result = *info;
@@ -114,11 +121,20 @@ namespace Nova::GE {
             uint32_t getDepthImageCount() const { return static_cast<uint32_t>(m_depthImages.size()); }
             std::vector<vk::ImageView> getDepthImageViews() const { return m_depthImagesViews; }
             vk::Semaphore getImageAvailableSemaphore() const { return imageAvailable; }
-
             uint32_t getImageIndex() const { return imageIndex; }
-            
             vk::Format getDepthFormat() const { return m_depthFormat; }
+            inline vk::SampleCountFlagBits getSampleCount() const { return m_sampleCount; }
 
+            inline vk::ImageView getCurrentMSColorImageView() const {
+                if (m_sampleCount == vk::SampleCountFlagBits::e1 || m_msColorImageViews.empty()) { return nullptr; }
+                return m_msColorImageViews[imageIndex];
+            }
+
+            inline vk::Image getCurrentMSColorImage() const {
+                if (m_sampleCount == vk::SampleCountFlagBits::e1 || m_msColorImagePtrs.empty()) { return nullptr; }
+                if (auto locked = m_msColorImagePtrs[imageIndex].lock()) { return locked->getImage(); }
+                return nullptr;
+            }
 
         private:
             vk::SurfaceFormat2KHR chooseFormat();
@@ -132,6 +148,8 @@ namespace Nova::GE {
 
             void setupColorBuffer();
             void setupDepthBuffer();  
+
+            void setupMSColorBuffer();
 
         public: void handleRecreation();
             
@@ -160,6 +178,10 @@ namespace Nova::GE {
             Nova::Core::Vec2 extent;
             Nova::GE::Device* device;
             Nova::Desktop::Window* window;
+
+            vk::SampleCountFlagBits m_sampleCount = vk::SampleCountFlagBits::e1;
+            std::vector<weakRef<Image>> m_msColorImagePtrs;
+            std::vector<vk::ImageView> m_msColorImageViews;
 
         private:
             NOVA_LOG_DEF("Swapchain");

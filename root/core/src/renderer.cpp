@@ -34,6 +34,7 @@ namespace Nova::Graphics {
             .setLayout(bakedLayout)
             .setSwapchainFormat(graphics.getSwapchain().getFormat())
             .setDepthFormat(graphics.getSwapchain().getDepthFormat())
+            .setMSAA(graphics.getSwapchain().getSampleCount())
             .build();
         m_pipeline = m_device->createPipeline(pipelineCI);
         m_pipelineLayout = m_pipeline.lock()->getLayout();
