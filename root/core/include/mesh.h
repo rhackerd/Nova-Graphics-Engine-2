@@ -29,6 +29,10 @@ namespace Nova::GE {
             u32         getIndexCount()     const { return m_indexCount; }
             bool        isValid()           const { return m_vertexBuffer.isValid(); }
 
+        public:
+            std::vector<GE::Vertex>&    getVerticies()  { return vertices; }
+            std::vector<u32>&       getIndices()    { return indices; }
+
         private:
             void loadNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<u32>& indices);
             void loadMesh(aiMesh* mesh, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<u32>& indices);
@@ -37,6 +41,10 @@ namespace Nova::GE {
         private:
             Buffer  m_vertexBuffer;
             Buffer  m_indexBuffer;
+
+            std::vector<GE::Vertex> vertices;
+            std::vector<u32>    indices;
+
             u32     m_indexCount = 0;
     };
 };

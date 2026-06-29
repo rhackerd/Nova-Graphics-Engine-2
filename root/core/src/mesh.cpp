@@ -49,7 +49,8 @@ namespace Nova::GE {
         m_indexBuffer.init(idxCI);
         m_indexBuffer.upload(indices.data(), sizeof(u32) * indices.size());
 
-        
+        this->vertices = vertices;
+        this->indices = indices;
 
         return isValid();
     }
